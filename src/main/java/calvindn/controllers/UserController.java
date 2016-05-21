@@ -2,18 +2,18 @@ package calvindn.controllers;
 
 import calvindn.domain.User;
 import calvindn.repositories.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import javax.annotation.Resource;
 import java.util.List;
 
 @Controller
 @RequestMapping("/users")
 public class UserController {
 
-    @Autowired
+    @Resource
     private UserRepository userDao;
 
     @RequestMapping("/create")
