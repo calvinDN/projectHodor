@@ -4,6 +4,7 @@ package calvindn.domain;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import javax.persistence.*;
+import javax.validation.constraints.NotNull;
 
 @Entity
 @Table(name = "users")
@@ -11,20 +12,31 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
-    private Long id;
+    private long id;
 
-    @JsonIgnore
-    @Column(nullable = false)
+    @NotNull
     private String password;
 
-    @Column(nullable = false)
+    @NotNull
     private String username;
 
-    @Version
-    private long version;
+    public User() { }
+
+    public User(long id) {
+        this.id = id;
+    }
+
+    public User(String username, String password) {
+        this.username = username;
+        this.password = password;
+    }
 
     public Long getId() {
         return id;
+    }
+
+    public void setId(long value) {
+        this.id = value;
     }
 
     public String getPassword() {
@@ -43,8 +55,5 @@ public class User {
         this.username = username;
     }
 
-    public User(String name, String password) {
-        this.username = name;
-        this.password = password;
-    }
+
 }
