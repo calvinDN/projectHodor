@@ -19,6 +19,8 @@ public class User {
     @NotNull
     private String username;
 
+    private @Version @JsonIgnore Long version;
+
     public User() { }
 
     public User(long id) {
@@ -42,17 +44,23 @@ public class User {
         return password;
     }
 
-    public String getUsername() {
-        return username;
-    }
-
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getUsername() {
+        return username;
     }
 
     public void setUsername(String username) {
         this.username = username;
     }
 
+    public Long getVersion() {
+        return version;
+    }
 
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }
