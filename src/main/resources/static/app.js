@@ -6,35 +6,39 @@ const client = require('./client');
 
 const follow = require('./follow'); // function to hop multiple links by "rel"
 
+const stompClient = require('./websocket-listener');
+
 const root = '/api';
 
 class App extends React.Component {
 
 	constructor(props) {
 		super(props);
-		this.state = {employees: [], attributes: [], pageSize: 2, links: {}};
+		this.state = {employees: [], attributes: [], page: 1, pageSize: 2, links: {}};
 		this.updatePageSize = this.updatePageSize.bind(this);
 		this.onCreate = this.onCreate.bind(this);
 		this.onUpdate = this.onUpdate.bind(this);
 		this.onDelete = this.onDelete.bind(this);
 		this.onNavigate = this.onNavigate.bind(this);
+		this.refreshCurrentPage = this.refreshCurrentPage.bind(this);
+		this.refreshAndGoToLastPage = this.refreshAndGoToLastPage.bind(this);
 	}
 
-	// tag::follow-2[]
 	loadFromServer(pageSize) {
 		follow(client, root, [
-			{rel: 'employees', params: {size: pageSize}}]
+				{rel: 'employees', params: {size: pageSize}}]
 		).then(employeeCollection => {
-			return client({
-				method: 'GET',
-				path: employeeCollection.entity._links.profile.href,
-				headers: {'Accept': 'application/schema+json'}
-			}).then(schema => {
-				this.schema = schema.entity;
-				this.links = employeeCollection.entity._links;
-				return employeeCollection;
-			});
+				return client({
+					method: 'GET',
+					path: employeeCollection.entity._links.profile.href,
+					headers: {'Accept': 'application/schema+json'}
+				}).then(schema => {
+					this.schema = schema.entity;
+					this.links = employeeCollection.entity._links;
+					return employeeCollection;
+				});
 		}).then(employeeCollection => {
+			this.page = employeeCollection.entity.page;
 			return employeeCollection.entity._embedded.employees.map(employee =>
 					client({
 						method: 'GET',
@@ -45,6 +49,7 @@ class App extends React.Component {
 			return when.all(employeePromises);
 		}).done(employees => {
 			this.setState({
+				page: this.page,
 				employees: employees,
 				attributes: Object.keys(this.schema.properties),
 				pageSize: pageSize,
@@ -52,27 +57,20 @@ class App extends React.Component {
 			});
 		});
 	}
-	// end::follow-2[]
 
-	// tag::create[]
+	// tag::on-create[]
 	onCreate(newEmployee) {
-		var self = this;
-		follow(client, root, ['employees']).then(response => {
-			return client({
+		follow(client, root, ['employees']).done(response => {
+			client({
 				method: 'POST',
 				path: response.entity._links.self.href,
 				entity: newEmployee,
 				headers: {'Content-Type': 'application/json'}
 			})
-		}).then(response => {
-			return follow(client, root, [{rel: 'employees', params: {'size': self.state.pageSize}}]);
-		}).done(response => {
-			self.onNavigate(response.entity._links.last.href);
-		});
+		})
 	}
-	// end::create[]
+	// end::on-create[]
 
-	// tag::update[]
 	onUpdate(employee, updatedEmployee) {
 		client({
 			method: 'PUT',
@@ -83,31 +81,25 @@ class App extends React.Component {
 				'If-Match': employee.headers.Etag
 			}
 		}).done(response => {
-			this.loadFromServer(this.state.pageSize);
+			/* Let the websocket handler update the state */
 		}, response => {
 			if (response.status.code === 412) {
-				alert('DENIED: Unable to update ' +
-					employee.entity._links.self.href + '. Your copy is stale.');
+				alert('DENIED: Unable to update ' + employee.entity._links.self.href + '. Your copy is stale.');
 			}
 		});
 	}
-	// end::update[]
 
-	// tag::delete[]
 	onDelete(employee) {
-		client({method: 'DELETE', path: employee.entity._links.self.href}).done(response => {
-			this.loadFromServer(this.state.pageSize);
-		});
+		client({method: 'DELETE', path: employee.entity._links.self.href});
 	}
-	// end::delete[]
 
-	// tag::navigate[]
 	onNavigate(navUri) {
 		client({
 			method: 'GET',
 			path: navUri
 		}).then(employeeCollection => {
 			this.links = employeeCollection.entity._links;
+			this.page = employeeCollection.entity.page;
 
 			return employeeCollection.entity._embedded.employees.map(employee =>
 					client({
@@ -119,6 +111,7 @@ class App extends React.Component {
 			return when.all(employeePromises);
 		}).done(employees => {
 			this.setState({
+				page: this.page,
 				employees: employees,
 				attributes: Object.keys(this.schema.properties),
 				pageSize: this.state.pageSize,
@@ -126,27 +119,75 @@ class App extends React.Component {
 			});
 		});
 	}
-	// end::navigate[]
 
-	// tag::update-page-size[]
 	updatePageSize(pageSize) {
 		if (pageSize !== this.state.pageSize) {
 			this.loadFromServer(pageSize);
 		}
 	}
-	// end::update-page-size[]
 
-	// tag::follow-1[]
+	// tag::websocket-handlers[]
+	refreshAndGoToLastPage(message) {
+		follow(client, root, [{
+			rel: 'employees',
+			params: {size: this.state.pageSize}
+		}]).done(response => {
+			if (response.entity._links.last !== undefined) {
+				this.onNavigate(response.entity._links.last.href);
+			} else {
+				this.onNavigate(response.entity._links.self.href);
+			}
+		})
+	}
+
+	refreshCurrentPage(message) {
+		follow(client, root, [{
+			rel: 'employees',
+			params: {
+				size: this.state.pageSize,
+				page: this.state.page.number
+			}
+		}]).then(employeeCollection => {
+			this.links = employeeCollection.entity._links;
+			this.page = employeeCollection.entity.page;
+
+			return employeeCollection.entity._embedded.employees.map(employee => {
+				return client({
+					method: 'GET',
+					path: employee._links.self.href
+				})
+			});
+		}).then(employeePromises => {
+			return when.all(employeePromises);
+		}).then(employees => {
+			this.setState({
+				page: this.page,
+				employees: employees,
+				attributes: Object.keys(this.schema.properties),
+				pageSize: this.state.pageSize,
+				links: this.links
+			});
+		});
+	}
+	// end::websocket-handlers[]
+
+	// tag::register-handlers[]
 	componentDidMount() {
 		this.loadFromServer(this.state.pageSize);
+		stompClient.register([
+			{route: '/topic/newEmployee', callback: this.refreshAndGoToLastPage},
+			{route: '/topic/updateEmployee', callback: this.refreshCurrentPage},
+			{route: '/topic/deleteEmployee', callback: this.refreshCurrentPage}
+		]);
 	}
-	// end::follow-1[]
+	// end::register-handlers[]
 
 	render() {
 		return (
 			<div>
 				<CreateDialog attributes={this.state.attributes} onCreate={this.onCreate}/>
-				<EmployeeList employees={this.state.employees}
+				<EmployeeList page={this.state.page}
+							  employees={this.state.employees}
 							  links={this.state.links}
 							  pageSize={this.state.pageSize}
 							  attributes={this.state.attributes}
@@ -159,7 +200,6 @@ class App extends React.Component {
 	}
 }
 
-// tag::create-dialog[]
 class CreateDialog extends React.Component {
 
 	constructor(props) {
@@ -182,9 +222,9 @@ class CreateDialog extends React.Component {
 
 	render() {
 		var inputs = this.props.attributes.map(attribute =>
-			<p key={attribute}>
-				<input type="text" placeholder={attribute} ref={attribute} className="field" />
-			</p>
+				<p key={attribute}>
+					<input type="text" placeholder={attribute} ref={attribute} className="field" />
+				</p>
 		);
 		return (
 			<div>
@@ -205,10 +245,8 @@ class CreateDialog extends React.Component {
 			</div>
 		)
 	}
-};
-// end::create-dialog[]
+}
 
-// tag::update-dialog[]
 class UpdateDialog extends React.Component {
 
 	constructor(props) {
@@ -238,8 +276,9 @@ class UpdateDialog extends React.Component {
 		var dialogId = "updateEmployee-" + this.props.employee.entity._links.self.href;
 
 		return (
-			<div key={this.props.employee.entity._links.self.href}>
+			<div>
 				<a href={"#" + dialogId}>Update</a>
+
 				<div id={dialogId} className="modalDialog">
 					<div>
 						<a href="#" title="Close" className="close">X</a>
@@ -256,9 +295,7 @@ class UpdateDialog extends React.Component {
 		)
 	}
 
-};
-// end::update-dialog[]
-
+}
 
 class EmployeeList extends React.Component {
 
@@ -271,7 +308,6 @@ class EmployeeList extends React.Component {
 		this.handleInput = this.handleInput.bind(this);
 	}
 
-	// tag::handle-page-size-updates[]
 	handleInput(e) {
 		e.preventDefault();
 		var pageSize = React.findDOMNode(this.refs.pageSize).value;
@@ -281,34 +317,37 @@ class EmployeeList extends React.Component {
 			React.findDOMNode(this.refs.pageSize).value = pageSize.substring(0, pageSize.length - 1);
 		}
 	}
-	// end::handle-page-size-updates[]
 
-	// tag::handle-nav[]
-	handleNavFirst(e){
+	handleNavFirst(e) {
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.first.href);
 	}
+
 	handleNavPrev(e) {
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.prev.href);
 	}
+
 	handleNavNext(e) {
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.next.href);
 	}
+
 	handleNavLast(e) {
 		e.preventDefault();
 		this.props.onNavigate(this.props.links.last.href);
 	}
-	// end::handle-nav[]
-	// tag::employee-list-render[]
+
 	render() {
+		var pageInfo = this.props.page.hasOwnProperty("number") ?
+			<h3>Employees - Page {this.props.page.number + 1} of {this.props.page.totalPages}</h3> : null;
+
 		var employees = this.props.employees.map(employee =>
-				<Employee key={employee.entity._links.self.href}
-						  employee={employee}
-						  attributes={this.props.attributes}
-						  onUpdate={this.props.onUpdate}
-						  onDelete={this.props.onDelete}/>
+			<Employee key={employee.entity._links.self.href}
+					  employee={employee}
+					  attributes={this.props.attributes}
+					  onUpdate={this.props.onUpdate}
+					  onDelete={this.props.onDelete}/>
 		);
 
 		var navLinks = [];
@@ -327,6 +366,7 @@ class EmployeeList extends React.Component {
 
 		return (
 			<div>
+				{pageInfo}
 				<input ref="pageSize" defaultValue={this.props.pageSize} onInput={this.handleInput}/>
 				<table>
 					<tr>
@@ -344,10 +384,8 @@ class EmployeeList extends React.Component {
 			</div>
 		)
 	}
-	// end::employee-list-render[]
 }
 
-// tag::employee[]
 class Employee extends React.Component {
 
 	constructor(props) {
@@ -377,7 +415,6 @@ class Employee extends React.Component {
 		)
 	}
 }
-// end::employee[]
 
 React.render(
 	<App />,

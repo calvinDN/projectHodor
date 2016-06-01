@@ -9,7 +9,7 @@ module.exports = {
     debug: true,
     resolve: {
         alias: {
-            'when': node_dir + '/when/when.js'
+            'stompjs': node_dir + '/stompjs/lib/stomp.js',
         }
     },
     output: {
