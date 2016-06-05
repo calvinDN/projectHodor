@@ -4,10 +4,7 @@ package calvindn.domain;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.Version;
+import javax.persistence.*;
 
 @Data
 @Entity
@@ -20,11 +17,15 @@ public class Employee {
 
     private @Version @JsonIgnore Long version;
 
+    private @ManyToOne
+    Manager manager;
+
     private Employee() {}
 
-    public Employee(String firstName, String lastName, String description) {
+    public Employee(String firstName, String lastName, String description, Manager manager) {
         this.firstName = firstName;
         this.lastName = lastName;
         this.description = description;
+        this.manager = manager;
     }
 }
