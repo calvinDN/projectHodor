@@ -1,4 +1,4 @@
-module.exports = function follow(api, rootPath, relArray) {
+function follow(api, rootPath, relArray) {
 	var root = api({
 		method: 'GET',
 		path: rootPath
