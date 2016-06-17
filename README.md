@@ -6,6 +6,8 @@ Small project to test out different technologies.
 
 Roadmap:
 ---
+- update to rest 2.0 https://www.npmjs.com/package/rest
+- Add requrie to updated react code
 - Material-UI theme
 - Update React version
 - Begin Angular Frontend
